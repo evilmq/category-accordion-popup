@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +115,7 @@ interface CategoryItemProps {
   onToggleCategory: (categoryId: string) => void;
   expandedCategories: Set<string>;
   onToggleExpand: (categoryId: string) => void;
+  searchTerm: string;
 }
 
 const CategoryItem: React.FC<CategoryItemProps> = ({
@@ -123,10 +124,27 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
   selectedCategories,
   onToggleCategory,
   expandedCategories,
-  onToggleExpand
+  onToggleExpand,
+  searchTerm
 }) => {
   const hasChildren = category.children && category.children.length > 0;
   const isExpanded = expandedCategories.has(category.id);
+
+  // Check if this category or any of its children match the search term
+  const matchesSearch = (cat: Category): boolean => {
+    if (cat.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return true;
+    }
+    if (cat.children) {
+      return cat.children.some(child => matchesSearch(child));
+    }
+    return false;
+  };
+
+  // If there's a search term and neither this category nor its children match, don't render
+  if (searchTerm && !matchesSearch(category)) {
+    return null;
+  }
 
   return (
     <div className="select-none">
@@ -169,6 +187,7 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
               onToggleCategory={onToggleCategory}
               expandedCategories={expandedCategories}
               onToggleExpand={onToggleExpand}
+              searchTerm={searchTerm}
             />
           ))}
         </div>
@@ -207,23 +226,38 @@ const CategoryPopup: React.FC<CategoryPopupProps> = ({ open, onOpenChange }) => 
     setExpandedCategories(newExpanded);
   };
 
+  // Function to get all category IDs (including children)
+  const getAllCategoryIds = (cats: Category[]): string[] => {
+    let ids: string[] = [];
+    cats.forEach(cat => {
+      ids.push(cat.id);
+      if (cat.children) {
+        ids = [...ids, ...getAllCategoryIds(cat.children)];
+      }
+    });
+    return ids;
+  };
+
   const handleSelectAll = () => {
-    const allIds = new Set<string>();
-    const getAllIds = (cats: Category[]) => {
-      cats.forEach(cat => {
-        allIds.add(cat.id);
-        if (cat.children) {
-          getAllIds(cat.children);
-        }
-      });
-    };
-    getAllIds(categories);
-    setSelectedCategories(allIds);
+    const allIds = getAllCategoryIds(categories);
+    // If all categories are already selected, deselect all
+    if (allIds.every(id => selectedCategories.has(id))) {
+      setSelectedCategories(new Set());
+    } else {
+      // Otherwise, select all categories
+      setSelectedCategories(new Set(allIds));
+    }
   };
 
   const handleCollapseAll = () => {
     setExpandedCategories(new Set());
   };
+
+  // Determine if all categories are selected
+  const allCategoriesSelected = useMemo(() => {
+    const allIds = getAllCategoryIds(categories);
+    return allIds.every(id => selectedCategories.has(id));
+  }, [selectedCategories]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,7 +267,7 @@ const CategoryPopup: React.FC<CategoryPopupProps> = ({ open, onOpenChange }) => 
         </DialogHeader>
         <div className="py-4">
           <Input
-            placeholder="Категории"
+            placeholder="Поиск категорий"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="mb-4"
@@ -242,7 +276,7 @@ const CategoryPopup: React.FC<CategoryPopupProps> = ({ open, onOpenChange }) => 
             <div className="flex items-center gap-2">
               <Checkbox
                 id="select-all"
-                checked={selectedCategories.size > 0}
+                checked={allCategoriesSelected}
                 onCheckedChange={handleSelectAll}
               />
               <label htmlFor="select-all" className="text-gray-700 cursor-pointer">
@@ -265,6 +299,7 @@ const CategoryPopup: React.FC<CategoryPopupProps> = ({ open, onOpenChange }) => 
                 onToggleCategory={handleToggleCategory}
                 expandedCategories={expandedCategories}
                 onToggleExpand={handleToggleExpand}
+                searchTerm={searchTerm}
               />
             ))}
           </div>
